@@ -1,93 +1,54 @@
-30 秒看懂：把豆包、即梦、抖音、快手分享链接丢进来，拿回无水印视频链接
+早上好，今天聊点对接时会让人挠头的事：Key 怎么买、为什么会被限、错误码到底在说什么。先把门敲开——体验站是 [https://video.zacao.top](https://video.zacao.top)，访问密码 `zacao`，打开输进去就能贴链接试。
 
----
+**问：我就是想先看一眼效果，不注册行不行？**
 
-如果你最近刷到朋友用豆包生成了一段很炸裂的短片，对方把链接甩给你，你点开却发现——**带水印，没法直接存**。或者你在即梦上做了个分镜 demo，想发到群里却被一层半透明 Logo 糊住画面。这种事以前只能截图、录屏、裁边，折腾半天画质还废了。
+答：行。首页可以不背 Key 直接试用，每个 IP 每小时 30 次。你贴一条抖音或者快手的分享口令进去，接口会自己从文案里把链接抠出来，不用手动拆 `v.douyin.com` 那串短链。觉得顺手，再去 [https://video.zacao.top/buy](https://video.zacao.top/buy) 自助下单拿正式 Key。
 
-现在不用了。把分享链接丢给 [https://video.zacao.top](https://video.zacao.top) 这个去水印接口，它帮你把抖音、快手、豆包、即梦这些平台的视频源抽出来，给你一个干净无水印的播放地址。听起来像魔法？其实只是解析服务。你复制链接 → 它帮你拆解 → 返回直链，三步而已。
+**问：拿到 Key 之后往哪塞？**
 
----
-
-## 三步操作：从分享链接到无水印视频
-
-**第一步：打开体验站，粘贴链接**
-
-访问 [https://video.zacao.top](https://video.zacao.top)，输入访问密码 `zacao` 进入首页。不需要注册，直接把 App 里复制的分享文案粘到输入框，点解析。首页体验不强制带 Key，每个 IP 每小时可以试 30 次，日常零散用基本够了。
-
-> 密码 `zacao` 是公开的，直接进，不用找客服要。首页就是给手残党试水的，按钮点下去 2 秒出结果。
-
-**第二步：正式对接，拿 Key**
-
-体验满意了，去 [https://video.zacao.top/buy](https://video.zacao.top/buy) 购买 API Key。对接时记住三样东西：
-
-- **Base URL**：`https://video.zacao.top`
-- **解析接口**：`POST /api/parse`
-- **鉴权 Header**：`X-API-Key: mp_xxxx`（把 `mp_xxxx` 换成你的真实 Key）
-
-> 与其每次手动复制链接去网页解析，不如把这个接口嵌到你的采集工具、内容管理后台或者机器人里，链接进来，视频出去，中间不用人盯。
-
-**第三步：复制 curl，直接跑通**
+答：Base URL 是 `https://video.zacao.top`，解析接口是 `POST /api/parse`，Header 里带 `X-API-Key`。也支持 `Authorization: Bearer` 或者 body/query 里放 `api_key`，但推荐 Header，干净。文档在 [https://video.zacao.top/docs](https://video.zacao.top/docs)，字段含义写得比较细。
 
 ```bash
 curl -X POST 'https://video.zacao.top/api/parse' \
   -H 'Content-Type: application/json' \
   -H 'X-API-Key: mp_xxxx' \
-  -d '{"text":"9.01 复制打开抖音，看看https://v.douyin.com/xxxxx/"}'
+  -d '{"text":"https://v.kuaishou.com/xxxxx"}'
 ```
 
-返回的 JSON 里，`data.video_url` 就是无水印视频地址，`data.cover_url` 是封面，`data.image_list` 是图集。豆包和即梦的分享链接同样走这个接口，不用改参数。平台识别是自动的，你传什么域名它就按什么规则解析，不用自己判断来源。
+**问：用户跑着跑着说「429 了」，我该怎么跟他解释？**
 
-返回结构长这样：
+答：先分清是匿名额度还是你的 Key 出问题。429 基本是匿名 IP 小时额度用尽，默认 30 次——这种情况引导用户去 [https://video.zacao.top/buy](https://video.zacao.top/buy) 拿 Key，换成带 `X-API-Key` 的请求就行。403 是 Key 无效、被禁用，或者内容本身不可访问；401 是服务端开了强制鉴权而你没带 Key。这几个别混着报，不然用户只会觉得「接口挂了」。
 
-```json
-{
-  "code": 200,
-  "message": "成功",
-  "succ": true,
-  "data": {
-    "platform": "豆包",
-    "title": "AI 生成的赛博城市漫游",
-    "video_url": "https://...",
-    "source_video_url": "https://...",
-    "cover_url": "https://..."
-  }
-}
-```
+**问：那 400、404、500 呢，要不要原样透给前端？**
 
----
+答：建议做一层翻译。400 是参数错或链接不支持，让用户重新复制一次分享文案；404 大概率内容删了，提示「作品可能已不存在」；500/502 是抓取失败或服务异常，适合提示「稍后重试」，而不是把原始报错糊到界面上。下面这张表可以直接抄进你的错误处理。
 
-## 什么时候会用到 `/api/parse/v2` 和 `/api/detail`
+| code | 含义 | 给用户的话术 |
+| --- | --- | --- |
+| 400 | 参数错误 / 链接不支持 | 请重新复制分享链接再试 |
+| 401 | 缺少 API Key | 服务配置问题，请联系客服 |
+| 403 | Key 无效 / 内容不可访问 | 内容暂时取不到，换个链接试试 |
+| 404 | 内容可能已删除 | 作品可能已删除 |
+| 429 | 匿名 IP 额度用尽 | 免费次数已用完，购买 Key 继续 |
+| 500/502 | 服务异常或抓取失败 | 稍后重试 |
 
-`POST /api/parse` 是最常用的入口，返回字段简洁。如果你的旧系统里写死了 `url`、`streamUrl`、`imgUrls` 这类字段名，可以直接用 `GET|POST /api/parse/v2`，它在 `/api/parse` 基础上多带了一套兼容字段，省去改代码的麻烦。
+**问：限流这块，我自己要不要再加一层？**
 
-`GET|POST /api/detail` 返回的是作品的公开互动数据——点赞、评论、收藏、播放量——目前支持抖音、小红书、视频号。注意它**不返回视频直链**，只给数据，适合做榜单或内容分析。这两条路都在完整文档里有说明：[https://video.zacao.top/docs](https://video.zacao.top/docs)
+答：要。接口侧有匿名限制，但你的业务侧最好按用户维度做队列和缓存。同一个 `video_id` 短时间重复请求，直接回缓存；`source_video_url` 有时效，别当永久地址存。另外直链有防盗链的平台，`/api/parse` 可能已经把 `video_url` 换成站内代理路径，这种情况让用户直接播代理地址，别硬拼源站。
 
-完整接口清单和错误码都在文档里列好了，比如 429 表示匿名 IP 小时额度用尽、403 表示 Key 无效或内容不可访问。建议对接前把文档翻一遍，省得踩坑。
+**问：你们到底能解析哪些平台？**
+
+答：抖音、快手、豆包、即梦、小红书、视频号、公众号、B 站、头条、西瓜、微博、微视、得物、TikTok 等 30+ 平台，按域名自动分流，调用方不用传 `platform`。探活可以打一下 `GET /api/health`，上线前先确认服务是通的。
+
+**去水印这件事，在 video.zacao.top 上先试再买最省心**——不用先付款猜效果。
 
 ---
 
-## 别踩的几个小坑
+**现在就去试：**
 
-1. **直链有时效**。解析出来的 `video_url` 或 `source_video_url` 是临时地址，建议解析后尽快转存到自己的存储，别拿去当永久外链用。
-2. **豆包和即梦要用真正的分享链接**。不要从对话页复制内部 URL，请在 App 或网页点击「分享」后复制出来的那条。
-3. **快手、小红书有时需要完整口令**。如果解析失败，让用户重新复制一次整段分享文案，别只截取短链。
-
-## 金句时间
-
-**去水印不用东拼西凑，一个 [video.zacao.top](https://video.zacao.top) 顶一堆工具站。**
-
-> 抖音、快手、豆包、即梦… 30+ 平台一个接口搞定，省下的时间够你多剪两条片子。
-
----
-
-## 现在就去试
-
-别再纠结水印挡脸了，动手跑一次就知道有多省事：
-
-- 体验网址：[https://video.zacao.top](https://video.zacao.top)
-- 访问密码：`zacao`
+- 体验站：[https://video.zacao.top](https://video.zacao.top)，密码 `zacao`
 - 接口文档：[https://video.zacao.top/docs](https://video.zacao.top/docs)
 - 购买 Key：[https://video.zacao.top/buy](https://video.zacao.top/buy)
-- GitHub 仓库：[https://github.com/luzacao/video-parse-api](https://github.com/luzacao/video-parse-api)
+- GitHub：[https://github.com/luzacao/video-parse-api](https://github.com/luzacao/video-parse-api)
 
-打开首页粘贴一条豆包或抖音链接，看看返回的无水印视频长什么样。对了，如果你自己就是做 AI 视频工具或内容采集的，这个接口能帮你省掉不少逆向的头发——代码在 GitHub 上有，文档也开着，欢迎自己研究。
+把 Key、限流、错误码三件事跟用户讲明白，对接就差不了。
